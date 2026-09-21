@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Secrets & environnement
+.env
+.env.*
+!.env.example
+credentials.json
+service_account.json
+*.pem
+**/.streamlit/secrets.toml
+
+# Notebooks Colab
+.ipynb_checkpoints/
+*.colab
+
+# DVC
+.dvc/cache/
+.dvc/tmp/
+/tmp/
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp

@@ -1,0 +1,31 @@
+# PitStop Assistant — dépendances de production (Colab + Streamlit Cloud)
+# Compatibilité testée : Python 3.12. Versions épinglées (reproductibilité).
+
+# --- UI / app ---
+streamlit==1.64.0
+
+# --- LLM + agents (Groq) ---
+groq==1.7.0
+langgraph==1.2.11
+langchain-core==1.6.3
+langchain-groq==1.1.3
+
+# --- RAG ---
+qdrant-client==1.19.1
+sentence-transformers==6.1.0
+
+# --- Données F1 ---
+fastf1==3.8.3
+requests==2.34.2
+
+# --- Données et calcul ---
+numpy==2.2.6
+pandas==2.2.3
+python-dotenv==1.2.3
+
+# --- Supabase (données structurées + monitoring) ---
+supabase==2.31.0
+psycopg2-binary==2.9.13
+
+# --- Monitoring intégré (graphiques) ---
+plotly==7.1.0
