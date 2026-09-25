@@ -74,6 +74,42 @@ class ConstructorRow(NamedTuple):
     nationality: str | None
 
 
+class StagedResult(NamedTuple):
+    """A result line still keyed by Jolpica slugs, before resolution to ids."""
+
+    season: int
+    round_number: int
+    session_type: str
+    driver_slug: str
+    constructor_slug: str | None
+    driver_number: int | None
+    grid_position: int | None
+    finish_position: int | None
+    points: float | None
+    laps: int | None
+    status: str | None
+    fastest_lap_rank: int | None
+    q1_ms: int | None
+    q2_ms: int | None
+    q3_ms: int | None
+
+
+class StagedStanding(NamedTuple):
+    season: int
+    round_number: int
+    driver_slug: str
+    constructor_slug: str | None
+    driver_number: int | None
+    position: int
+    points: float
+    wins: int
+
+
+RACE = "R"
+SPRINT = "S"
+QUALIFYING = "Q"
+
+
 def _envelope(payload: Mapping[str, Any]) -> Mapping[str, Any]:
     """Return the ``MRData`` mapping, or explain what came back instead."""
     if not isinstance(payload, Mapping):
@@ -224,6 +260,220 @@ def build_season(season: int, races: Sequence[RaceRow]) -> SeasonRow:
     return SeasonRow(season=season, label=str(season), start_date=min(dates) if dates else None)
 
 
+def _mapping_list(value: object) -> list[Mapping[str, Any]]:
+    """Keep only the mapping entries of a list field."""
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, Mapping)]
+
+
+def _rounds(
+    payload: Mapping[str, Any], list_key: str
+) -> list[tuple[int, int, list[Mapping[str, Any]]]]:
+    """Return ``(season, round, entries)`` for each race carrying ``list_key``.
+
+    Round-scoped endpoints nest their result list inside ``RaceTable.Races``,
+    and the round number lives on that race, not on the result itself.
+    """
+    rounds: list[tuple[int, int, list[Mapping[str, Any]]]] = []
+    for race in _rows(payload, "RaceTable", "Races"):
+        season = _int(_text(race, "season"))
+        round_number = _int(_text(race, "round"))
+        if season is None or round_number is None:
+            continue
+        rounds.append((season, round_number, _mapping_list(race.get(list_key))))
+    return rounds
+
+
+def parse_time_ms(raw: str | None) -> int | None:
+    """Convert a Jolpica duration such as ``1:29.708`` into milliseconds.
+
+    Accepts ``M:SS``, ``M:SS.m`` and ``M:SS.mmm``; anything else yields None
+    rather than a wrong number.
+    """
+    if not raw:
+        return None
+    parts = raw.strip().split(":")
+    if len(parts) not in (2, 3):
+        return None
+    tail = parts[-1]
+    head = parts[:-1]
+    if not tail:
+        return None
+    whole, dot, fraction = tail.partition(".")
+    if dot and not whole:
+        return None
+    fraction = (fraction + "000")[:3]
+    try:
+        seconds = int(whole)
+        if len(head) == 1:
+            minutes = int(head[0])
+        else:
+            minutes = 60 * int(head[0]) + int(head[1])
+        milliseconds = int(fraction) if dot else 0
+    except ValueError:
+        return None
+    if seconds < 0 or minutes < 0:
+        return None
+    return (minutes * 60 + seconds) * 1000 + milliseconds
+
+
+def _fastest_lap_rank(entry: Mapping[str, Any]) -> int | None:
+    """Read the fastest-lap rank, tolerating both API shapes.
+
+    Current responses carry a single ``FastestLap`` object; older ones expose a
+    ``FastestLaps`` array. Handling only one form would silently drop the rank
+    on the other.
+    """
+    plural = entry.get("FastestLaps")
+    if isinstance(plural, list):
+        candidates = _mapping_list(plural)
+        first = candidates[0] if candidates else None
+    elif isinstance(plural, Mapping):
+        first = plural
+    else:
+        single = entry.get("FastestLap")
+        first = single if isinstance(single, Mapping) else None
+    if first is None:
+        return None
+    return _int(_text(first, "rank"))
+
+
+def _result_entries(
+    entries: Sequence[Mapping[str, Any]],
+    season: int,
+    round_number: int,
+    session_type: str,
+) -> list[StagedResult]:
+    rows: list[StagedResult] = []
+    for entry in entries:
+        driver = entry.get("Driver")
+        if not isinstance(driver, Mapping):
+            continue
+        slug = _text(driver, "driverId")
+        if not slug:
+            continue
+        constructor = entry.get("Constructor")
+        constructor_slug = (
+            _text(constructor, "constructorId") if isinstance(constructor, Mapping) else None
+        )
+        points = _text(entry, "points")
+        rows.append(
+            StagedResult(
+                season=season,
+                round_number=round_number,
+                session_type=session_type,
+                driver_slug=slug,
+                constructor_slug=constructor_slug,
+                driver_number=_int(_text(entry, "number")),
+                grid_position=_int(_text(entry, "grid")),
+                finish_position=_int(_text(entry, "position")),
+                points=float(points) if points and _is_number(points) else None,
+                laps=_int(_text(entry, "laps")),
+                status=_text(entry, "status"),
+                fastest_lap_rank=_fastest_lap_rank(entry),
+                q1_ms=None,
+                q2_ms=None,
+                q3_ms=None,
+            )
+        )
+    return rows
+
+
+def _is_number(value: str) -> bool:
+    try:
+        float(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _parse_results(
+    payload: Mapping[str, Any], list_key: str, session_type: str
+) -> list[StagedResult]:
+    rows: list[StagedResult] = []
+    for season, round_number, entries in _rounds(payload, list_key):
+        rows.extend(_result_entries(entries, season, round_number, session_type))
+    return rows
+
+
+def parse_race_results(payload: Mapping[str, Any]) -> list[StagedResult]:
+    """Extract the Grand Prix classification (``session_type`` ``R``)."""
+    return _parse_results(payload, "Results", RACE)
+
+
+def parse_sprint_results(payload: Mapping[str, Any]) -> list[StagedResult]:
+    """Extract the sprint classification (``session_type`` ``S``)."""
+    return _parse_results(payload, "SprintResults", SPRINT)
+
+
+def parse_qualifying_results(payload: Mapping[str, Any]) -> list[StagedResult]:
+    """Extract qualifying (``session_type`` ``Q``).
+
+    The API sends no ``grid``, ``laps``, ``status`` or points for qualifying,
+    so those stay None rather than being faked. The three Q times are the whole
+    value of the row and are converted to milliseconds.
+    """
+    rows: list[StagedResult] = []
+    for season, round_number, entries in _rounds(payload, "QualifyingResults"):
+        by_slug = {}
+        for entry in entries:
+            driver = entry.get("Driver")
+            if isinstance(driver, Mapping):
+                slug = _text(driver, "driverId")
+                if slug:
+                    by_slug[slug] = entry
+        for staged in _result_entries(entries, season, round_number, QUALIFYING):
+            source = by_slug.get(staged.driver_slug, {})
+            rows.append(
+                staged._replace(
+                    q1_ms=parse_time_ms(_text(source, "Q1")),
+                    q2_ms=parse_time_ms(_text(source, "Q2")),
+                    q3_ms=parse_time_ms(_text(source, "Q3")),
+                )
+            )
+    return rows
+
+
+def parse_driver_standings(payload: Mapping[str, Any]) -> list[StagedStanding]:
+    """Extract cumulative driver standings, one line per round.
+
+    ``Constructors`` is a list, because a driver can change team mid-season.
+    The last entry is kept: it is the team the driver was racing for at the end
+    of that round.
+    """
+    rows: list[StagedStanding] = []
+    for standings_list in _rows(payload, "StandingsTable", "StandingsLists"):
+        season = _int(_text(standings_list, "season"))
+        round_number = _int(_text(standings_list, "round"))
+        if season is None or round_number is None:
+            continue
+        for entry in _mapping_list(standings_list.get("DriverStandings")):
+            driver = entry.get("Driver")
+            if not isinstance(driver, Mapping):
+                continue
+            slug = _text(driver, "driverId")
+            position = _int(_text(entry, "position"))
+            if not slug or position is None:
+                continue
+            constructors = _mapping_list(entry.get("Constructors"))
+            constructor_slug = _text(constructors[-1], "constructorId") if constructors else None
+            points = _text(entry, "points")
+            rows.append(
+                StagedStanding(
+                    season=season,
+                    round_number=round_number,
+                    driver_slug=slug,
+                    constructor_slug=constructor_slug,
+                    driver_number=_int(_text(driver, "permanentNumber")),
+                    position=position,
+                    points=float(points) if points and _is_number(points) else 0.0,
+                    wins=_int(_text(entry, "wins")) or 0,
+                )
+            )
+    return rows
+
+
 class JolpicaClient:
     """Thin JSON client over the Jolpica endpoints the pipeline needs."""
 
@@ -297,4 +547,14 @@ class JolpicaClient:
         return self.get(f"{season}/{round_number}/qualifying/")
 
     def season_driver_standings(self, season: int) -> Mapping[str, Any]:
+        """Return the **final** championship table only.
+
+        Jolpica's season-level standings endpoint answers with one entry per
+        driver for the last round, not the per-round history. Use
+        :meth:`round_driver_standings` for the full progression.
+        """
         return self.get(f"{season}/driverstandings/")
+
+    def round_driver_standings(self, season: int, round_number: int) -> Mapping[str, Any]:
+        """Return the cumulative standings as they stood after a round."""
+        return self.get(f"{season}/{round_number}/driverstandings/")

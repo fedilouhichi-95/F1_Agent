@@ -6,6 +6,7 @@ import psycopg2
 import pytest
 from app.config import AppConfig
 from app.data_pipeline import ingest
+from app.data_pipeline import resolve as ingest_resolve
 
 RACES_PAYLOAD = {
     "MRData": {
@@ -397,3 +398,207 @@ def test_main_falls_back_to_configured_seasons(monkeypatch: pytest.MonkeyPatch) 
 
     assert ingest.main(["metadata"]) == 0
     assert connection.commits == 8
+
+
+RESULTS_PAYLOAD = {
+    "MRData": {
+        "RaceTable": {
+            "Races": [
+                {
+                    "season": "2023",
+                    "round": "1",
+                    "raceName": "Bahrain Grand Prix",
+                    "Results": [
+                        {
+                            "number": "1",
+                            "position": "1",
+                            "points": "25",
+                            "grid": "1",
+                            "laps": "57",
+                            "status": "Finished",
+                            "Driver": {
+                                "driverId": "max_verstappen",
+                                "permanentNumber": "3",
+                                "code": "VER",
+                            },
+                            "Constructor": {"constructorId": "red_bull", "name": "Red Bull"},
+                            "FastestLap": {"rank": "6", "lap": "44"},
+                        }
+                    ],
+                    "SprintResults": [],
+                    "QualifyingResults": [],
+                }
+            ]
+        }
+    }
+}
+
+STANDINGS_LIST_PAYLOAD = {
+    "MRData": {
+        "StandingsTable": {
+            "StandingsLists": [
+                {
+                    "season": "2023",
+                    "round": "1",
+                    "DriverStandings": [
+                        {
+                            "position": "1",
+                            "points": "25",
+                            "wins": "1",
+                            "Driver": {
+                                "driverId": "max_verstappen",
+                                "permanentNumber": "3",
+                                "code": "VER",
+                            },
+                            "Constructors": [{"constructorId": "red_bull", "name": "Red Bull"}],
+                        }
+                    ],
+                }
+            ]
+        }
+    }
+}
+
+
+class ResultsJolpica(FakeJolpica):
+    def round_results(self, season: int, round_number: int) -> dict:
+        self.calls.append(f"results:{season}/{round_number}")
+        return RESULTS_PAYLOAD
+
+    def round_sprint(self, season: int, round_number: int) -> dict:
+        self.calls.append(f"sprint:{season}/{round_number}")
+        return RESULTS_PAYLOAD
+
+    def round_qualifying(self, season: int, round_number: int) -> dict:
+        self.calls.append(f"qualifying:{season}/{round_number}")
+        return RESULTS_PAYLOAD
+
+    def round_driver_standings(self, season: int, round_number: int) -> dict:
+        self.calls.append(f"standings:{season}/{round_number}")
+        return STANDINGS_LIST_PAYLOAD
+
+
+def test_sessions_normalises_and_deduplicates() -> None:
+    assert ingest._sessions("rsq") == ["R", "S", "Q"]
+    assert ingest._sessions(" R , R ") == ["R"]
+
+
+def test_sessions_rejects_an_unknown_letter() -> None:
+    with pytest.raises(ValueError, match="inconnu"):
+        ingest._sessions("RX")
+
+
+def test_sessions_rejects_an_empty_selection() -> None:
+    with pytest.raises(ValueError, match="Aucun type"):
+        ingest._sessions(" , ")
+
+
+def test_fetch_results_only_requests_the_selected_sessions() -> None:
+    client = ResultsJolpica()
+
+    staged = ingest.fetch_results(client, 2023, [1], ["R"])
+
+    assert [item.session_type for item in staged] == ["R"]
+    assert client.calls == ["results:2023/1"]
+
+
+def test_fetch_standings_asks_for_every_round() -> None:
+    client = ResultsJolpica()
+
+    staged = ingest.fetch_standings(client, 2023, [1, 2, 3])
+
+    assert len(staged) == 3
+    assert client.calls == ["standings:2023/1", "standings:2023/2", "standings:2023/3"]
+
+
+def test_main_results_dry_run_never_connects(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    def refuse(_config: AppConfig) -> object:
+        raise AssertionError("aucune connexion ne doit être ouverte en simulation")
+
+    monkeypatch.setattr(ingest.db, "connect", refuse)
+    _patch_client(monkeypatch, ResultsJolpica)
+
+    code = ingest.main(
+        ["results", "--season", "2023", "--round", "1", "--session", "R", "--dry-run"]
+    )
+
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "simulation" in out
+    assert "results" in out
+    assert "dont R" in out
+
+
+def test_main_results_dry_run_can_skip_standings(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    monkeypatch.setattr(ingest.db, "connect", lambda _config: FakeConnection())
+    _patch_client(monkeypatch, ResultsJolpica)
+
+    code = ingest.main(
+        ["results", "--season", "2023", "--round", "1", "--skip-standings", "--dry-run"]
+    )
+
+    assert code == 0
+    assert "standings" not in capsys.readouterr().out
+
+
+def test_main_results_writes_when_references_resolve(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    connection = FakeConnection()
+    calls = _record_upserts(monkeypatch)
+    monkeypatch.setattr(ingest.db, "connect", lambda _config: connection)
+    monkeypatch.setattr(
+        ingest,
+        "load_references",
+        lambda _c, _s: ingest_resolve.References(
+            driver_ids={"max_verstappen": 1},
+            constructor_ids={"red_bull": 10},
+            race_ids={1: 100},
+        ),
+    )
+    _patch_client(monkeypatch, ResultsJolpica)
+
+    code = ingest.main(["results", "--season", "2023", "--round", "1", "--session", "R"])
+
+    assert code == 0
+    assert [call["table"] for call in calls] == ["results", "standings"]
+    assert calls[0]["conflict"] == ("season", "session_type", "race_id", "driver_id")
+    assert calls[0]["rows"][0][:5] == (2023, "R", 100, 1, 10)
+    assert connection.closed is True
+    assert "Saison 2023" in capsys.readouterr().out
+
+
+def test_main_results_aborts_and_names_the_missing_references(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    _record_upserts(monkeypatch)
+    monkeypatch.setattr(ingest.db, "connect", lambda _config: FakeConnection())
+    monkeypatch.setattr(
+        ingest,
+        "load_references",
+        lambda _c, _s: ingest_resolve.References(driver_ids={}, race_ids={}),
+    )
+    _patch_client(monkeypatch, ResultsJolpica)
+
+    code = ingest.main(["results", "--season", "2023", "--round", "1", "--session", "R"])
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "driver:max_verstappen" in captured.err
+    assert "race:2023/1" in captured.err
+    assert "Ingestion interrompue" in captured.err
+
+
+def test_main_results_rejects_an_unknown_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_client(monkeypatch, ResultsJolpica)
+
+    code = ingest.main(["results", "--season", "2023", "--session", "X"])
+
+    assert code == 2
+
+
+def test_sessions_accepts_the_comma_separated_form() -> None:
+    assert ingest._sessions("R, S, Q") == ["R", "S", "Q"]
+    assert ingest._sessions("r,s") == ["R", "S"]

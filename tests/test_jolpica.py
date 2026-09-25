@@ -6,6 +6,8 @@ Jolpica's envelope breaks a test instead of corrupting an ingestion silently.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 import requests
 from app.data_pipeline import jolpica
@@ -14,8 +16,13 @@ from app.data_pipeline.jolpica import (
     JolpicaError,
     build_season,
     parse_constructors,
+    parse_driver_standings,
     parse_drivers,
+    parse_qualifying_results,
+    parse_race_results,
     parse_races,
+    parse_sprint_results,
+    parse_time_ms,
 )
 
 RACES_PAYLOAD = {
@@ -362,3 +369,292 @@ def test_client_does_not_leak_credentials_in_its_error() -> None:
         client.season_races(2023)
 
     assert secret not in str(excinfo.value)
+
+
+RACE_RESULTS_PAYLOAD = {
+    "MRData": {
+        "RaceTable": {
+            "season": "2023",
+            "Races": [
+                {
+                    "season": "2023",
+                    "round": "1",
+                    "raceName": "Bahrain Grand Prix",
+                    "Results": [
+                        {
+                            "number": "1",
+                            "position": "1",
+                            "positionText": "1",
+                            "points": "25",
+                            "grid": "1",
+                            "laps": "57",
+                            "status": "Finished",
+                            "Driver": {
+                                "driverId": "max_verstappen",
+                                "permanentNumber": "3",
+                                "code": "VER",
+                            },
+                            "Constructor": {"constructorId": "red_bull", "name": "Red Bull"},
+                            "Time": {"millis": "5636736", "time": "1:33:56.736"},
+                            "FastestLap": {"rank": "6", "lap": "44", "Time": {"time": "1:36.236"}},
+                        }
+                    ],
+                }
+            ],
+        }
+    }
+}
+
+SPRINT_RESULTS_PAYLOAD = {
+    "MRData": {
+        "RaceTable": {
+            "Races": [
+                {
+                    "season": "2023",
+                    "round": "4",
+                    "Results": [],
+                    "SprintResults": [
+                        {
+                            "number": "11",
+                            "position": "1",
+                            "points": "8",
+                            "grid": "2",
+                            "laps": "17",
+                            "status": "Finished",
+                            "Driver": {"driverId": "perez", "permanentNumber": "11", "code": "PER"},
+                            "Constructor": {"constructorId": "red_bull", "name": "Red Bull"},
+                            "FastestLap": {"rank": "4", "lap": "11"},
+                        }
+                    ],
+                }
+            ]
+        }
+    }
+}
+
+QUALIFYING_PAYLOAD = {
+    "MRData": {
+        "RaceTable": {
+            "Races": [
+                {
+                    "season": "2023",
+                    "round": "1",
+                    "QualifyingResults": [
+                        {
+                            "number": "1",
+                            "position": "1",
+                            "Driver": {
+                                "driverId": "max_verstappen",
+                                "permanentNumber": "3",
+                                "code": "VER",
+                            },
+                            "Constructor": {"constructorId": "red_bull", "name": "Red Bull"},
+                            "Q1": "1:31.295",
+                            "Q2": "1:30.503",
+                            "Q3": "1:29.708",
+                        },
+                        {
+                            "number": "11",
+                            "position": "2",
+                            "Driver": {"driverId": "perez", "permanentNumber": "11", "code": "PER"},
+                            "Constructor": {"constructorId": "red_bull", "name": "Red Bull"},
+                            "Q1": "1:31.900",
+                        },
+                    ],
+                }
+            ]
+        }
+    }
+}
+
+STANDINGS_PAYLOAD = {
+    "MRData": {
+        "StandingsTable": {
+            "season": "2023",
+            "round": "2",
+            "StandingsLists": [
+                {
+                    "season": "2023",
+                    "round": "2",
+                    "DriverStandings": [
+                        {
+                            "position": "1",
+                            "positionText": "1",
+                            "points": "50",
+                            "wins": "2",
+                            "Driver": {
+                                "driverId": "max_verstappen",
+                                "permanentNumber": "3",
+                                "code": "VER",
+                            },
+                            "Constructors": [
+                                {"constructorId": "red_bull", "name": "Red Bull"},
+                                {"constructorId": "alpha_tauri", "name": "AlphaTauri"},
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+    }
+}
+
+
+def test_parse_race_results_reads_the_singular_fastest_lap_object() -> None:
+    rows = parse_race_results(RACE_RESULTS_PAYLOAD)
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.season == 2023
+    assert row.round_number == 1
+    assert row.session_type == "R"
+    assert row.driver_slug == "max_verstappen"
+    assert row.constructor_slug == "red_bull"
+    assert row.driver_number == 1
+    assert row.grid_position == 1
+    assert row.finish_position == 1
+    assert row.points == 25.0
+    assert row.laps == 57
+    assert row.status == "Finished"
+    assert row.fastest_lap_rank == 6
+    assert row.q1_ms is None
+
+
+def test_parse_race_results_reads_the_plural_fastest_laps_array() -> None:
+    payload = json.loads(json.dumps(RACE_RESULTS_PAYLOAD))
+    result = payload["MRData"]["RaceTable"]["Races"][0]["Results"][0]
+    result["FastestLaps"] = [result.pop("FastestLap")]
+
+    rows = parse_race_results(payload)
+
+    assert rows[0].fastest_lap_rank == 6
+
+
+def test_parse_sprint_results_uses_the_sprint_list() -> None:
+    rows = parse_sprint_results(SPRINT_RESULTS_PAYLOAD)
+
+    assert len(rows) == 1
+    assert rows[0].session_type == "S"
+    assert rows[0].round_number == 4
+    assert rows[0].driver_slug == "perez"
+    assert rows[0].points == 8.0
+    assert rows[0].fastest_lap_rank == 4
+
+
+def test_parse_sprint_results_is_empty_when_the_api_has_no_sprint() -> None:
+    empty = {
+        "MRData": {"RaceTable": {"Races": [{"season": "2023", "round": "11", "SprintResults": []}]}}
+    }
+
+    assert parse_sprint_results(empty) == []
+
+
+def test_parse_qualifying_converts_the_three_sector_times() -> None:
+    rows = parse_qualifying_results(QUALIFYING_PAYLOAD)
+
+    assert len(rows) == 2
+    first = rows[0]
+    assert first.session_type == "Q"
+    assert first.q1_ms == 91295
+    assert first.q2_ms == 90503
+    assert first.q3_ms == 89708
+    assert first.finish_position == 1
+    assert first.driver_number == 1
+
+
+def test_parse_qualifying_leaves_unplayed_sectors_null() -> None:
+    rows = parse_qualifying_results(QUALIFYING_PAYLOAD)
+
+    assert rows[1].q1_ms == 91900
+    assert rows[1].q2_ms is None
+    assert rows[1].q3_ms is None
+
+
+def test_parse_qualifying_does_not_invent_grid_or_points() -> None:
+    row = parse_qualifying_results(QUALIFYING_PAYLOAD)[0]
+
+    assert row.grid_position is None
+    assert row.laps is None
+    assert row.status is None
+    assert row.points is None
+    assert row.fastest_lap_rank is None
+
+
+def test_parse_qualifying_reads_the_qualifying_list_only() -> None:
+    assert parse_qualifying_results(RACE_RESULTS_PAYLOAD) == []
+    assert parse_race_results(QUALIFYING_PAYLOAD) == []
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("1:29.708", 89708),
+        ("1:29.7", 89700),
+        ("1:29", 89000),
+        ("0:59.999", 59999),
+        ("57:23.456", 3443456),
+        ("1:33:56.736", 5636736),
+    ],
+)
+def test_parse_time_ms_handles_real_qualifying_formats(raw: str, expected: int) -> None:
+    assert parse_time_ms(raw) == expected
+
+
+@pytest.mark.parametrize("raw", [None, "", "inconnu", "1", "1:2:3:4", "x:y", ".5"])
+def test_parse_time_ms_refuses_anything_else(raw: object) -> None:
+    assert parse_time_ms(raw) is None  # type: ignore[arg-type]
+
+
+def test_parse_driver_standings_keeps_the_last_constructor() -> None:
+    rows = parse_driver_standings(STANDINGS_PAYLOAD)
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.season == 2023
+    assert row.round_number == 2
+    assert row.driver_slug == "max_verstappen"
+    assert row.constructor_slug == "alpha_tauri"
+    assert row.driver_number == 3
+    assert row.position == 1
+    assert row.points == 50.0
+    assert row.wins == 2
+
+
+def test_parse_driver_standings_skips_entries_without_position() -> None:
+    payload = json.loads(json.dumps(STANDINGS_PAYLOAD))
+    payload["MRData"]["StandingsTable"]["StandingsLists"][0]["DriverStandings"][0].pop("position")
+
+    assert parse_driver_standings(payload) == []
+
+
+def test_season_standings_endpoint_exposes_only_the_final_round() -> None:
+    """Guards a Jolpica quirk: the season endpoint is not a history."""
+    final = {
+        "MRData": {
+            "StandingsTable": {
+                "season": "2023",
+                "round": "22",
+                "StandingsLists": [
+                    {
+                        "season": "2023",
+                        "round": "22",
+                        "DriverStandings": [
+                            {
+                                "position": "1",
+                                "points": "575",
+                                "wins": "19",
+                                "Driver": {"driverId": "max_verstappen", "permanentNumber": "3"},
+                                "Constructors": [{"constructorId": "red_bull", "name": "Red Bull"}],
+                            }
+                        ],
+                    }
+                ],
+            }
+        }
+    }
+
+    rows = parse_driver_standings(final)
+
+    assert len(rows) == 1
+    assert rows[0].round_number == 22
+    assert rows[0].points == 575.0
