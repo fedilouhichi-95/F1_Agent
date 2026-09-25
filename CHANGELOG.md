@@ -8,6 +8,7 @@ Toutes les évolutions notables du projet sont consignées dans ce fichier.
 - Clarification de l'état scaffold et de la roadmap dans la documentation.
 - Correction de la compatibilité entre `groq` et `langchain-groq` dans une PR dédiée.
 - Mise à jour de `pytest` vers `9.0.3` et retrait de `ragas` vulnérable du scaffold CI.
+- Ajout de la lecture des secrets Streamlit et de la protection des valeurs sensibles dans les logs.
 
 ## [0.1.0] - 2026-09-25
 
