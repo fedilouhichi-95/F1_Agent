@@ -2,28 +2,14 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import psycopg2
 
 from app.config import AppConfig
+from app.data_pipeline.errors import describe_failure
 
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
-
-_DSN_PATTERN = re.compile(r"postgres(?:ql)?://\S+", re.IGNORECASE)
-_REDACTED = "<url redacted>"
-_CONNECTION_HINT = (
-    "Vérifie que SUPABASE_DB_URL utilise la chaîne du Session pooler, copiée depuis "
-    "Project Settings > Database > Connect. L'hôte aws-N.pooler.supabase.com ne se "
-    "déduit pas de la région, et la connexion directe est IPv6-only."
-)
-
-
-def describe_failure(exc: Exception) -> str:
-    """Summarise a migration failure, keeping the cause but hiding credentials."""
-    detail = _DSN_PATTERN.sub(_REDACTED, " ".join(str(exc).split()))
-    return f"{detail} — {_CONNECTION_HINT}"
 
 
 def apply_schema(config: AppConfig, schema_path: Path = SCHEMA_PATH) -> None:
