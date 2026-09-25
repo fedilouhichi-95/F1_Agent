@@ -79,3 +79,7 @@ Ce schéma décrit la cible de `SPEC.md` et `docs/architecture.md`, pas un flux 
 ## Roadmap
 
 Le plan détaillé est maintenu dans [`docs/plan_pfe.md`](docs/plan_pfe.md). Les fonctionnalités non livrées sont identifiées dans [`PROGRESS.md`](PROGRESS.md) afin de distinguer la cible de l'état actuel.
+
+## Licence
+
+Ce projet est distribué sous la licence MIT. Voir [`LICENSE`](LICENSE).
