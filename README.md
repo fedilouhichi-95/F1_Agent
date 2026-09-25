@@ -45,8 +45,3 @@ Question → Streamlit → Orchestrateur (LangGraph)
 ```
 
 Voir `SPEC.md` pour le périmètre complet et `docs/` pour l'architecture.
-
-## Roadmap
-
-Voir `SPEC.md` (features numérotées) et `PROGRESS.md` (suivi d'avancement).
-Plan détaillé sur 16 semaines dans `docs/plan_pfe.md`.
