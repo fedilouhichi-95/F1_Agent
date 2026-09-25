@@ -35,9 +35,49 @@ python -m app.data_pipeline.migrate
 ```
 
 Le runner lit `app/data_pipeline/schema.sql`, applique le DDL dans une
-transaction et affiche un message de succès ou une erreur sans secret. Avant la
-première application, vérifier que le projet Supabase ne contient pas déjà des
-données qui nécessitent une migration de réparation.
+transaction et affiche un message de succès ou l'erreur PostgreSQL réelle, sans
+jamais exposer le mot de passe. Le schéma est idempotent : le relancer ne duplique
+rien. Avant la première application, vérifier que le projet Supabase ne contient
+pas déjà des données qui nécessitent une migration de réparation.
+
+## Choisir la bonne chaîne de connexion
+
+Depuis Colab, seule la chaîne du **Session pooler** fonctionne.
+
+| Méthode | Hôte | IP | Verdict |
+|---|---|---|---|
+| Session pooler | `aws-N-REGION.pooler.supabase.com:5432` | IPv4 | ✅ à utiliser |
+| Transaction pooler | `aws-N-REGION.pooler.supabase.com:6543` | IPv4 | ❌ ne supporte ni les transactions multi-instructions, ni le DDL |
+| Connexion directe | `db.REF.supabase.co:5432` | IPv6 | ❌ les VM Colab n'ont pas d'IPv6 |
+
+**L'hôte doit être copié, jamais composé.** Le `N` de `aws-N-REGION` est un index
+de cluster propre à la région : il ne se déduit pas du nom de la région. Un hôte
+composé à la main est résolu par le DNS mais pointe vers un cluster qui ne connaît
+pas le projet.
+
+Source : Project Settings → Database → **Connect** (bouton en haut de la page) →
+onglet Session pooler.
+
+L'identifiant est `postgres.REF` pour le pooler, mais seulement `postgres` pour la
+connexion directe. Le mot de passe se transmet séparément via `SUPABASE_DB_PASSWORD`
+et n'a pas besoin d'être encodé dans l'URL.
+
+## Diagnostic de connexion
+
+Si la migration échoue, le message contient la cause PostgreSQL. Correspondance :
+
+| Message | Cause | Correction |
+|---|---|---|
+| `tenant/user postgres.REF not found` | Hôte composé à la main, ou mauvaise région | Copier l'hôte depuis le panneau Connect |
+| `password authentication failed` | Mot de passe obsolète | Project Settings → Database → Reset password, puis mettre à jour `.env` |
+| `could not translate host name` | Hôte mal saisi | Recontrôler la chaîne |
+| `timeout expired` | Connexion directe en IPv6 | Basculer sur le Session pooler |
+| `no pg_hba.conf entry` | Adresse IP non autorisée | Vérifier les règles réseau du projet |
+
+En Colab, une variable déjà lue dans la session n'est pas écrasée par un
+`load_dotenv()` ultérieur : un diagnostic de connexion doit utiliser
+`load_dotenv(override=True)`. Le runner, lui, démarre un processus neuf et relit
+`.env` proprement.
 
 ## Workflow quotidien
 
