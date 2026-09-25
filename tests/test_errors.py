@@ -6,6 +6,7 @@ import psycopg2
 from app.data_pipeline.errors import (
     CONNECTION_HINT,
     REDACTED,
+    describe_connection_failure,
     describe_failure,
     missing_configuration,
 )
@@ -19,6 +20,21 @@ def test_describe_failure_keeps_postgres_reason() -> None:
     )
 
     message = describe_failure(error)
+
+    assert "tenant/user postgres.wsmohvwhcovsylwpivzl not found" in message
+
+
+def test_describe_failure_does_not_blame_the_connection_for_unrelated_errors() -> None:
+    message = describe_failure(ValueError("Aucun grand prix trouvé pour la saison 2099."))
+
+    assert "Session pooler" not in message
+    assert CONNECTION_HINT not in message
+
+
+def test_describe_connection_failure_appends_the_pooler_hint() -> None:
+    error = psycopg2.OperationalError("tenant/user postgres.wsmohvwhcovsylwpivzl not found")
+
+    message = describe_connection_failure(error)
 
     assert "tenant/user postgres.wsmohvwhcovsylwpivzl not found" in message
     assert "Session pooler" in message
@@ -41,7 +57,7 @@ def test_describe_failure_redacts_password_parameter() -> None:
     message = describe_failure(error)
 
     assert "hunter2" not in message
-    assert "Session pooler" in message
+    assert "host=db.example" in message
 
 
 def test_describe_failure_collapses_whitespace() -> None:
@@ -59,5 +75,6 @@ def test_missing_configuration_names_every_variable() -> None:
     assert "SUPABASE_DB_PASSWORD" in str(error)
 
 
-def test_describe_failure_never_raises_on_empty_message() -> None:
-    assert describe_failure(ValueError()) == f" — {CONNECTION_HINT}"
+def test_describe_failure_handles_an_empty_message() -> None:
+    assert describe_failure(ValueError()) == ""
+    assert describe_connection_failure(ValueError()) == f" — {CONNECTION_HINT}"
