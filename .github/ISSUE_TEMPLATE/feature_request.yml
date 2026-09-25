@@ -1,0 +1,37 @@
+name: Fonctionnalité
+description: Proposer une amélioration ou une nouvelle capacité
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: "Décrivez la valeur apportée au projet et le périmètre proposé."
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problème ou besoin
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposition
+      description: "Comportement attendu, contraintes et alternatives considérées."
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Critères d'acceptation
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Vérifications
+      options:
+        - label: La proposition respecte le périmètre de SPEC.md
+          required: false
+        - label: Aucun secret n'est inclus dans cette issue
+          required: true
