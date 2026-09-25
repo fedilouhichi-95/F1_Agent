@@ -19,6 +19,8 @@ DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
 DEFAULT_QDRANT_COLLECTION = "pitstop_docs"
 DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 DEFAULT_FASTF1_CACHE_DIR = "/content/drive/MyDrive/f1_cache"
+DEFAULT_JOLPICA_BASE_URL = "https://api.jolpi.ca/ergast/f1"
+DEFAULT_INGEST_SEASONS = "2023"
 
 
 def _clean(value: object) -> str | None:
@@ -49,6 +51,8 @@ class AppConfig:
     supabase_db_password: str = field(default="", repr=False)
     embedding_model: str = field(default=DEFAULT_EMBEDDING_MODEL)
     fastf1_cache_dir: str = field(default=DEFAULT_FASTF1_CACHE_DIR)
+    jolpica_base_url: str = field(default=DEFAULT_JOLPICA_BASE_URL)
+    ingest_seasons: str = field(default=DEFAULT_INGEST_SEASONS)
     mlflow_tracking_uri: str = field(default="")
     mlflow_tracking_username: str = field(default="")
     mlflow_tracking_password: str = field(default="", repr=False)
@@ -75,6 +79,8 @@ class AppConfig:
             supabase_db_password=_value("SUPABASE_DB_PASSWORD", "", values),
             embedding_model=_value("EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL, values),
             fastf1_cache_dir=_value("FASTF1_CACHE_DIR", DEFAULT_FASTF1_CACHE_DIR, values),
+            jolpica_base_url=_value("JOLPICA_BASE_URL", DEFAULT_JOLPICA_BASE_URL, values),
+            ingest_seasons=_value("INGEST_SEASONS", DEFAULT_INGEST_SEASONS, values),
             mlflow_tracking_uri=_value("MLFLOW_TRACKING_URI", "", values),
             mlflow_tracking_username=_value("MLFLOW_TRACKING_USERNAME", "", values),
             mlflow_tracking_password=_value("MLFLOW_TRACKING_PASSWORD", "", values),

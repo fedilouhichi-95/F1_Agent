@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 import pytest
-from app.config import DEFAULT_EMBEDDING_MODEL, DEFAULT_GROQ_MODEL, AppConfig
+from app.config import (
+    DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_GROQ_MODEL,
+    DEFAULT_INGEST_SEASONS,
+    DEFAULT_JOLPICA_BASE_URL,
+    AppConfig,
+)
 
 
 def test_from_env_uses_defaults_when_empty() -> None:
@@ -16,16 +22,20 @@ def test_from_env_uses_defaults_when_empty() -> None:
     assert config.qdrant_collection_name == "pitstop_docs"
     assert config.groq_model == DEFAULT_GROQ_MODEL
     assert config.embedding_model == DEFAULT_EMBEDDING_MODEL
+    assert config.jolpica_base_url == DEFAULT_JOLPICA_BASE_URL
+    assert config.ingest_seasons == DEFAULT_INGEST_SEASONS
 
 
 def test_from_env_reads_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GROQ_API_KEY", "test-key")
     monkeypatch.setenv("QDRANT_COLLECTION_NAME", "fixtures")
+    monkeypatch.setenv("INGEST_SEASONS", "2019,2020")
     config = AppConfig.from_env()
     assert config.groq_api_key == "test-key"
     assert config.qdrant_collection_name == "fixtures"
     assert config.qdrant_api_key == ""
     assert config.groq_model == DEFAULT_GROQ_MODEL
+    assert config.ingest_seasons == "2019,2020"
 
 
 def test_from_mapping_reads_streamlit_secrets() -> None:
