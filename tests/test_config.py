@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from app.config import DEFAULT_EMBEDDING_MODEL, DEFAULT_GROQ_MODEL, AppConfig
 
 
