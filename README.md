@@ -50,3 +50,5 @@ Voir `SPEC.md` pour le périmètre complet et `docs/` pour l'architecture.
 Mise à jour de la documentation.
 ## Changelog
 - v3: mise a jour documentation
+## Section YOLO
+Test badge yolo.
