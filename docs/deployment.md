@@ -6,7 +6,7 @@
 |---|---|---|
 | Groq | console.groq.com | `GROQ_API_KEY` |
 | Qdrant Cloud | cloud.qdrant.io | `QDRANT_URL`, `QDRANT_API_KEY` |
-| Supabase | supabase.com | `SUPABASE_URL`, `SUPABASE_ANON_KEY` |
+| Supabase | supabase.com | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_DB_URL`, `SUPABASE_DB_PASSWORD` |
 | DagsHub | dagshub.com | `MLFLOW_TRACKING_*` (credentials MLflow) |
 | GitHub | existing | dépôt public `F1_Agent` |
 | Streamlit Cloud | share.streamlit.io | lié au repo GitHub |
@@ -23,6 +23,21 @@ Les secrets sont transmis à la configuration sans être importés par
 
 Ne jamais coller une valeur réelle dans `.streamlit/secrets.toml.example`,
 `.env.example` ou un notebook.
+
+## Migration Supabase
+
+La migration doit être exécutée par le code du projet, jamais en collant le DDL
+dans l'éditeur SQL. Après avoir configuré `SUPABASE_DB_URL` et
+`SUPABASE_DB_PASSWORD` dans Colab ou les secrets GitHub :
+
+```bash
+python -m app.data_pipeline.migrate
+```
+
+Le runner lit `app/data_pipeline/schema.sql`, applique le DDL dans une
+transaction et affiche un message de succès ou une erreur sans secret. Avant la
+première application, vérifier que le projet Supabase ne contient pas déjà des
+données qui nécessitent une migration de réparation.
 
 ## Workflow quotidien
 

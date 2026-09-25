@@ -16,8 +16,8 @@ ce fichier pour retrouver le contexte instantanément.
     épinglées au 21/09/2026
   - `app/config.py` (config centralisée), `app/agents/base.py` (contrat agent),
     `app/streamlit_app.py` (app minimale), `python -m app` (smoke test)
-  - Schéma Supabase amorcé : `app/data_pipeline/schema.sql`
-  - Tests : `pytest` 6 verts, marker `-m eval` vert, `ruff check` 0 violation
+  - Schéma Supabase multi-saison : `app/data_pipeline/schema.sql` avec RLS et runner `app/data_pipeline/migrate.py`
+  - Tests unitaires et de contrat pour la configuration, le schéma et la migration ; CI lint/format/tests verte
   - Workflows : `ci.yml` (lint + tests), `eval.yml` (quality gate RAGAS)
   - Docs : architecture, déploiement, MCP (à compléter), plan PFE 16 semaines
 - [x] Push initial sur GitHub privé (`chore: initial project scaffold`).
@@ -49,11 +49,15 @@ ce fichier pour retrouver le contexte instantanément.
 - `requirements.txt` = runtime (Colab + Streamlit Cloud) ; `requirements-dev.txt`
   = CI/outils (DVC, MLflow, RAGAS, ruff, pytest) pour garder l'app Streamlit
   Cloud légère.
-- Schéma Supabase conçu multi-saison dès maintenant (colonne `season`), mais
-  seule la saison 2023 est ingestée en v1.
+- Schéma Supabase : `drivers` et `constructors` sont globaux ; les tables
+  factuelles portent `season` et utilisent des clés composites.
+- Les tables F1 sont lisibles par `anon` via RLS ; `logs` reste privé et
+  réservé au rôle de service.
+- DDL/migrations Supabase : uniquement via `app/data_pipeline/schema.sql` et
+  `python -m app.data_pipeline.migrate`, jamais via une manipulation manuelle.
+- `ragas` reste retiré du scaffold jusqu'à la publication d'une version non
+  affectée par CVE-2026-6587.
 - Dockerfiles = bonus CV uniquement, jamais utilisés pour le déploiement réel.
-- Migrations/DDL Supabase : uniquement via `app/data_pipeline/schema.sql` et le
-  code du pipeline (jamais de manipulation manuelle).
 
 ## 🚨 Actions requises hors code
 

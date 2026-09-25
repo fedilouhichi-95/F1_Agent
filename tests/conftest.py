@@ -16,6 +16,8 @@ def clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         "QDRANT_COLLECTION_NAME",
         "SUPABASE_URL",
         "SUPABASE_ANON_KEY",
+        "SUPABASE_DB_URL",
+        "SUPABASE_DB_PASSWORD",
         "EMBEDDING_MODEL",
         "FASTF1_CACHE_DIR",
         "MLFLOW_TRACKING_URI",

@@ -45,6 +45,8 @@ class AppConfig:
     qdrant_collection_name: str = field(default=DEFAULT_QDRANT_COLLECTION)
     supabase_url: str = field(default="")
     supabase_anon_key: str = field(default="", repr=False)
+    supabase_db_url: str = field(default="", repr=False)
+    supabase_db_password: str = field(default="", repr=False)
     embedding_model: str = field(default=DEFAULT_EMBEDDING_MODEL)
     fastf1_cache_dir: str = field(default=DEFAULT_FASTF1_CACHE_DIR)
     mlflow_tracking_uri: str = field(default="")
@@ -69,6 +71,8 @@ class AppConfig:
             ),
             supabase_url=_value("SUPABASE_URL", "", values),
             supabase_anon_key=_value("SUPABASE_ANON_KEY", "", values),
+            supabase_db_url=_value("SUPABASE_DB_URL", "", values),
+            supabase_db_password=_value("SUPABASE_DB_PASSWORD", "", values),
             embedding_model=_value("EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL, values),
             fastf1_cache_dir=_value("FASTF1_CACHE_DIR", DEFAULT_FASTF1_CACHE_DIR, values),
             mlflow_tracking_uri=_value("MLFLOW_TRACKING_URI", "", values),
