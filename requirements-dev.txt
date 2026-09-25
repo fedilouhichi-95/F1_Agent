@@ -5,11 +5,11 @@
 ruff==0.16.8
 
 # --- Tests ---
-pytest==8.4.2
+pytest==9.0.3
 pytest-mock==3.15.1
 
 # --- Évaluation RAGAS (quality gate CI) ---
-ragas==0.4.3
+# RAGAS sera réintroduit après publication d'une version non affectée par CVE-2026-6587.
 
 # --- MLOps ---
 dvc[gdrive]==3.67.1
