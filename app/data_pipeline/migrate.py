@@ -7,7 +7,7 @@ from pathlib import Path
 import psycopg2
 
 from app.config import AppConfig
-from app.data_pipeline.errors import describe_failure
+from app.data_pipeline.errors import describe_connection_failure
 
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 
@@ -41,7 +41,7 @@ def main() -> None:
     try:
         apply_schema(AppConfig.from_env())
     except (ValueError, psycopg2.Error) as exc:
-        raise SystemExit(f"Migration impossible : {describe_failure(exc)}") from exc
+        raise SystemExit(f"Migration impossible : {describe_connection_failure(exc)}") from exc
     print("Schéma Supabase appliqué avec succès.")
 
 

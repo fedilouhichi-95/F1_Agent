@@ -24,8 +24,17 @@ def describe_failure(exc: Exception) -> str:
     """Summarise a failure, keeping the cause but hiding credentials."""
     detail = " ".join(str(exc).split())
     detail = _DSN_PATTERN.sub(REDACTED, detail)
-    detail = _PASSWORD_PATTERN.sub(r"\1=<redacted>", detail)
-    return f"{detail} — {CONNECTION_HINT}"
+    return _PASSWORD_PATTERN.sub(r"\1=<redacted>", detail)
+
+
+def describe_connection_failure(exc: Exception) -> str:
+    """Same as :func:`describe_failure`, plus the pooler hint.
+
+    Only for failures that actually reach PostgreSQL: appending the hint to an
+    unrelated error (a mistyped season, say) sends the reader after the wrong
+    setting.
+    """
+    return f"{describe_failure(exc)} — {CONNECTION_HINT}"
 
 
 def missing_configuration(*names: str) -> ValueError:
