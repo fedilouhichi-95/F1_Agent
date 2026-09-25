@@ -33,10 +33,14 @@ déployé en continu sur Streamlit Community Cloud.
 
 ## Modèle de données
 
-- **Supabase** : `drivers`, `constructors`, `races`, `results`, `standings`,
-  `laps`, `pit_stops`, `tire_stints`, `logs`. Toutes les tables factuelles
-  portent une colonne `season` (multi-saison). DDL dans
-  `app/data_pipeline/schema.sql`.
+- **Supabase** : `seasons` est la dimension temporelle ; `drivers` et
+  `constructors` portent les identités globales ; `races`, `results`,
+  `standings`, `laps`, `pit_stops` et `tire_stints` portent les faits liés à
+  une saison. `logs` est une table opérationnelle privée.
+- **RLS** : les tables F1 sont lisibles par `anon` ; les écritures passent par
+  le rôle de service. `logs` n’est pas accessible au client.
+- **Migration** : le DDL idempotent est dans `app/data_pipeline/schema.sql` et
+  est appliqué par `python -m app.data_pipeline.migrate`.
 - **Qdrant Cloud** : collection `pitstop_docs` — chunks textuels (Wikipedia +
   PDF FIA) vectorisés en BGE-small, avec métadonnées (source, sujet, chunk).
 
