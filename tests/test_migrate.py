@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import pytest
 import app.data_pipeline.migrate as migrate
+import pytest
 from app.config import AppConfig
 
 
