@@ -48,3 +48,5 @@ Voir `SPEC.md` pour le périmètre complet et `docs/` pour l'architecture.
 
 ## Notes
 Mise à jour de la documentation.
+## Changelog
+- v3: mise a jour documentation
