@@ -11,7 +11,7 @@ on:
 jobs:
   evaluate:
     name: Évaluation RAGAS + exactitude chiffrée
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Récupération du code
         uses: actions/checkout@v7
