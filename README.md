@@ -45,3 +45,6 @@ Question → Streamlit → Orchestrateur (LangGraph)
 ```
 
 Voir `SPEC.md` pour le périmètre complet et `docs/` pour l'architecture.
+
+## Notes
+Mise à jour de la documentation.
