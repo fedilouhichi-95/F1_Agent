@@ -116,9 +116,7 @@ class FakeSession:
 BASE_URL = "https://api.jolpi.ca/ergast/f1"
 
 
-def _client(
-    responses: list[object], **kwargs: int | float
-) -> tuple[JolpicaClient, FakeSession]:
+def _client(responses: list[object], **kwargs: int | float) -> tuple[JolpicaClient, FakeSession]:
     session = FakeSession(responses)
     client = JolpicaClient(BASE_URL, session, sleep=lambda _s: None, **kwargs)
     return client, session
@@ -142,12 +140,20 @@ def test_parse_races_keeps_two_rounds_on_the_same_circuit_distinct() -> None:
         "MRData": {
             "RaceTable": {
                 "Races": [
-                    {"season": "2020", "round": "9", "raceName": "Styrian Grand Prix",
-                     "Circuit": {"circuitId": "red_bull_ring", "circuitName": "Red Bull Ring"},
-                     "date": "2020-10-11"},
-                    {"season": "2020", "round": "10", "raceName": "Styrian Grand Prix",
-                     "Circuit": {"circuitId": "red_bull_ring", "circuitName": "Red Bull Ring"},
-                     "date": "2020-10-18"},
+                    {
+                        "season": "2020",
+                        "round": "9",
+                        "raceName": "Styrian Grand Prix",
+                        "Circuit": {"circuitId": "red_bull_ring", "circuitName": "Red Bull Ring"},
+                        "date": "2020-10-11",
+                    },
+                    {
+                        "season": "2020",
+                        "round": "10",
+                        "raceName": "Styrian Grand Prix",
+                        "Circuit": {"circuitId": "red_bull_ring", "circuitName": "Red Bull Ring"},
+                        "date": "2020-10-18",
+                    },
                 ]
             }
         }
@@ -181,9 +187,7 @@ def test_parse_races_skips_incomplete_entries() -> None:
 def test_parse_races_survives_missing_circuit() -> None:
     payload = {
         "MRData": {
-            "RaceTable": {
-                "Races": [{"season": "2023", "round": "1", "raceName": "Sans circuit"}]
-            }
+            "RaceTable": {"Races": [{"season": "2023", "round": "1", "raceName": "Sans circuit"}]}
         }
     }
 
@@ -217,8 +221,13 @@ def test_parse_drivers_preserves_accents() -> None:
         "MRData": {
             "DriverTable": {
                 "Drivers": [
-                    {"driverId": "perez", "givenName": "Sergio", "familyName": "Pérez",
-                     "code": "PER", "nationality": "Mexican"}
+                    {
+                        "driverId": "perez",
+                        "givenName": "Sergio",
+                        "familyName": "Pérez",
+                        "code": "PER",
+                        "nationality": "Mexican",
+                    }
                 ]
             }
         }
