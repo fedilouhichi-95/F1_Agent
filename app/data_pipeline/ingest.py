@@ -30,10 +30,21 @@ from app.data_pipeline.jolpica import (
     DriverRow,
     JolpicaClient,
     RaceRow,
+    StagedResult,
+    StagedStanding,
     build_season,
     parse_constructors,
+    parse_driver_standings,
     parse_drivers,
+    parse_qualifying_results,
+    parse_race_results,
     parse_races,
+    parse_sprint_results,
+)
+from app.data_pipeline.resolve import (
+    load_references,
+    resolve_results,
+    resolve_standings,
 )
 
 RACE_COLUMNS = (
@@ -48,6 +59,33 @@ RACE_COLUMNS = (
 DRIVER_COLUMNS = ("source_driver_id", "name", "code", "nationality")
 CONSTRUCTOR_COLUMNS = ("source_constructor_id", "name", "code", "nationality")
 SEASON_COLUMNS = ("season", "label", "start_date")
+RESULT_COLUMNS = (
+    "season",
+    "session_type",
+    "race_id",
+    "driver_id",
+    "constructor_id",
+    "driver_number",
+    "grid_position",
+    "finish_position",
+    "points",
+    "laps",
+    "status",
+    "fastest_lap_rank",
+    "q1_ms",
+    "q2_ms",
+    "q3_ms",
+)
+STANDING_COLUMNS = (
+    "season",
+    "race_id",
+    "driver_id",
+    "constructor_id",
+    "driver_number",
+    "position",
+    "points",
+    "wins",
+)
 
 MINIMUM_SEASON = 1950
 
@@ -140,6 +178,45 @@ def ingest_season_metadata(
     return write_metadata(active, tables)
 
 
+def fetch_results(
+    client: JolpicaClient,
+    season: int,
+    rounds: Sequence[int],
+    sessions: Sequence[str],
+) -> list[StagedResult]:
+    """Fetch results for the requested rounds and session types.
+
+    Round-scoped requests are used on purpose: each answer holds at most twenty
+    drivers, so no pagination is needed and one failing round only affects
+    itself.
+    """
+    staged: list[StagedResult] = []
+    parsers = {
+        "R": (client.round_results, parse_race_results),
+        "S": (client.round_sprint, parse_sprint_results),
+        "Q": (client.round_qualifying, parse_qualifying_results),
+    }
+    for round_number in rounds:
+        for session_type in sessions:
+            fetch, parse = parsers[session_type]
+            staged.extend(parse(fetch(season, round_number)))
+    return staged
+
+
+def fetch_standings(
+    client: JolpicaClient, season: int, rounds: Sequence[int]
+) -> list[StagedStanding]:
+    """Fetch the cumulative driver standings after each round.
+
+    The season-level endpoint only exposes the final table, so the progression
+    has to be requested round by round.
+    """
+    staged: list[StagedStanding] = []
+    for round_number in rounds:
+        staged.extend(parse_driver_standings(client.round_driver_standings(season, round_number)))
+    return staged
+
+
 def count_rows(active: connection, season: int) -> SeasonCounts:
     """Report the current population of the pipeline tables for a season."""
     queries = (
@@ -171,9 +248,59 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Récupère et analyse sans ouvrir de connexion.",
     )
 
+    results = subcommands.add_parser(
+        "results", help="Classifications course, sprint et qualifications, plus les classements."
+    )
+    results.add_argument("--season", action="append", help="Saison à ingérer (répétable).")
+    results.add_argument(
+        "--session",
+        default="RS",
+        help="Types de session à ingérer : R, S, Q (défaut RS).",
+    )
+    results.add_argument(
+        "--round",
+        action="append",
+        type=int,
+        help="Limiter à ces rounds (répétable, défaut : tous).",
+    )
+    results.add_argument(
+        "--skip-standings",
+        action="store_true",
+        help="Ne pas ingérer les classements cumulés.",
+    )
+    results.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Récupère et analyse sans ouvrir de connexion.",
+    )
+
     status = subcommands.add_parser("status", help="État de la base pour une saison.")
     status.add_argument("--season", action="append", help="Saison à inspecter (répétable).")
     return parser
+
+
+def _sessions(raw: str) -> list[str]:
+    """Validate the --session selector against what the schema accepts.
+
+    Accepts both the compact form used by the default (``RSQ``) and the
+    human-readable one the help text suggests (``R, S, Q``).
+    """
+    tokens: list[str] = []
+    for chunk in raw.replace(",", " ").split():
+        tokens.extend(character.upper() for character in chunk)
+    unknown = [token for token in tokens if token not in ("R", "S", "Q")]
+    if unknown:
+        raise ValueError(f"Type de session inconnu : {', '.join(unknown)}")
+    if not tokens:
+        raise ValueError("Aucun type de session demandé.")
+    return list(dict.fromkeys(tokens))
+
+
+def _rounds_of(client: JolpicaClient, season: int) -> list[int]:
+    rounds = [row.round_number for row in parse_races(client.season_races(season))]
+    if not rounds:
+        raise ValueError(f"Aucun grand prix trouvé pour la saison {season}.")
+    return sorted(rounds)
 
 
 def _seasons_from(args: argparse.Namespace, config: AppConfig) -> list[int]:
@@ -208,6 +335,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             active.close()
         return 0
 
+    if args.command == "results":
+        return _run_results(config, client, args, seasons)
+
     try:
         for season in seasons:
             if args.dry_run:
@@ -222,9 +352,83 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(f"Saison {season} :")
             for table, count in written.items():
                 print(f"  {table:<14} {count:>7}")
-    except (ValueError, psycopg2.Error) as exc:
+    except (ValueError, psycopg2.Error, LookupError) as exc:
         print(f"Ingestion interrompue : {describe_failure(exc)}", file=sys.stderr)
         return 1
+    return 0
+
+
+def _run_results(
+    config: AppConfig,
+    client: JolpicaClient,
+    args: argparse.Namespace,
+    seasons: Sequence[int],
+) -> int:
+    """Fetch, resolve and optionally write results and standings."""
+    try:
+        sessions = _sessions(args.session)
+    except ValueError as exc:
+        print(f"Configuration invalide : {exc}", file=sys.stderr)
+        return 2
+
+    active: connection | None = None
+    try:
+        if not args.dry_run:
+            active = db.connect(config)
+
+        for season in seasons:
+            rounds = args.round or _rounds_of(client, season)
+            staged = fetch_results(client, season, rounds, sessions)
+            written: dict[str, int] = {}
+
+            if active is None:
+                by_session: dict[str, int] = {}
+                for item in staged:
+                    by_session[item.session_type] = by_session.get(item.session_type, 0) + 1
+                written = {
+                    "results": len(staged),
+                    **{f"  dont {key}": value for key, value in sorted(by_session.items())},
+                }
+            else:
+                references = load_references(active, season)
+                resolution = resolve_results(staged, references)
+                rows = resolution.raise_if_incomplete("results")
+                with db.transaction(active):
+                    written["results"] = db.upsert(
+                        active,
+                        table="results",
+                        columns=RESULT_COLUMNS,
+                        rows=rows,
+                        conflict=("season", "session_type", "race_id", "driver_id"),
+                    )
+
+            if not args.skip_standings:
+                standings = fetch_standings(client, season, rounds)
+                if active is None:
+                    written["standings"] = len(standings)
+                else:
+                    references = load_references(active, season)
+                    standing_rows = resolve_standings(standings, references)
+                    rows = standing_rows.raise_if_incomplete("standings")
+                    with db.transaction(active):
+                        written["standings"] = db.upsert(
+                            active,
+                            table="standings",
+                            columns=STANDING_COLUMNS,
+                            rows=rows,
+                            conflict=("season", "race_id", "driver_id"),
+                        )
+
+            label = f"Saison {season}" + (" (simulation)" if active is None else "")
+            print(f"{label} :")
+            for table, count in written.items():
+                print(f"  {table:<14} {count:>7}")
+    except (ValueError, psycopg2.Error, LookupError) as exc:
+        print(f"Ingestion interrompue : {describe_failure(exc)}", file=sys.stderr)
+        return 1
+    finally:
+        if active is not None:
+            active.close()
     return 0
 
 
