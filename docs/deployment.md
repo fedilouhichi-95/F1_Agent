@@ -8,7 +8,7 @@
 | Qdrant Cloud | cloud.qdrant.io | `QDRANT_URL`, `QDRANT_API_KEY` |
 | Supabase | supabase.com | `SUPABASE_URL`, `SUPABASE_ANON_KEY` |
 | DagsHub | dagshub.com | `MLFLOW_TRACKING_*` (credentials MLflow) |
-| GitHub | existing | dépôt privé `F1_Agent` |
+| GitHub | existing | dépôt public `F1_Agent` |
 | Streamlit Cloud | share.streamlit.io | lié au repo GitHub |
 
 En dev : toutes les clés dans les Secrets Colab ; en prod : secrets de l'app
@@ -18,16 +18,17 @@ Streamlit Cloud (même noms que `.env.example`).
 
 1. Ouvrir une session Colab, monter Drive, cloner le repo.
 2. Travailler dans les notebooks d'expérimentation ou importer `app/`.
-3. Lancer lint + tests : `ruff check .` puis `python -m pytest`.
+3. Lancer les vérifications : `ruff check .`, `ruff format --check .` puis `python -m pytest -m "not eval"`.
 4. **Committer AVANT de fermer la session** (Colab n'est pas fiable).
-5. Pousser sur GitHub : la CI (`ci.yml`) vérifie lint + tests à chaque push.
+5. Pousser sur GitHub : la CI (`ci.yml`) vérifie lint, format et tests à chaque push.
 
 ## CD automatique
 
-- Le push sur `main` déclenche le redéploiement Streamlit Cloud (app
-  connectée au repo, zéro étape manuelle).
-- Les PR vers `main` passent le portail de qualité (`eval.yml`) : évaluation
-  RAGAS + exactitude chiffrée. Fusion bloquée si les seuils régressent.
+- Le push sur `main` peut déclencher le redéploiement Streamlit Cloud lorsque
+  l’application est connectée au dépôt.
+- Les PR vers `main` déclenchent `eval.yml`. Pour le moment, ce workflow
+  vérifie seulement la structure du corpus ; les métriques RAGAS, l’exactitude
+  et les seuils restent à implémenter dans l’issue #14.
 
 ## Rajout ultérieur (bonus CV, sans impact déploiement)
 
