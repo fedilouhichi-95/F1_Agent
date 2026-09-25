@@ -20,6 +20,8 @@ def clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         "SUPABASE_DB_PASSWORD",
         "EMBEDDING_MODEL",
         "FASTF1_CACHE_DIR",
+        "JOLPICA_BASE_URL",
+        "INGEST_SEASONS",
         "MLFLOW_TRACKING_URI",
         "MLFLOW_TRACKING_USERNAME",
         "MLFLOW_TRACKING_PASSWORD",

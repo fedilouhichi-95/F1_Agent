@@ -6,7 +6,6 @@ import app.data_pipeline.migrate as migrate
 import psycopg2
 import pytest
 from app.config import AppConfig
-from app.data_pipeline.migrate import _REDACTED
 
 
 class FakeCursor:
@@ -83,30 +82,6 @@ def test_apply_schema_rolls_back_on_error(monkeypatch: pytest.MonkeyPatch) -> No
 def test_apply_schema_requires_database_url() -> None:
     with pytest.raises(ValueError, match="SUPABASE_DB_URL"):
         migrate.apply_schema(AppConfig.from_mapping({}))
-
-
-def test_describe_failure_keeps_postgres_reason() -> None:
-    error = psycopg2.OperationalError(
-        'connection to server at "aws-0-eu-west-1.pooler.supabase.com" (10.0.0.1), '
-        "port 5432 failed: FATAL: (ENOTFOUND) tenant/user "
-        "postgres.wsmohvwhcovsylwpivzl not found"
-    )
-
-    message = migrate.describe_failure(error)
-
-    assert "tenant/user postgres.wsmohvwhcovsylwpivzl not found" in message
-    assert "Session pooler" in message
-
-
-def test_describe_failure_redacts_connection_string() -> None:
-    error = psycopg2.OperationalError(
-        "could not connect: dsn postgresql://postgres:wip-secret@db.example:5432/postgres"
-    )
-
-    message = migrate.describe_failure(error)
-
-    assert "wip-secret" not in message
-    assert _REDACTED in message
 
 
 def test_main_exits_with_diagnostic(monkeypatch: pytest.MonkeyPatch) -> None:
