@@ -12,7 +12,17 @@
 | Streamlit Cloud | share.streamlit.io | lié au repo GitHub |
 
 En dev : toutes les clés dans les Secrets Colab ; en prod : secrets de l'app
-Streamlit Cloud (même noms que `.env.example`).
+Streamlit Cloud (mêmes noms que `.env.example`).
+
+## Secrets Streamlit
+
+En local, `AppConfig` lit le `.env` ou `.streamlit/secrets.toml`. Sur Streamlit
+Community Cloud, saisir les mêmes noms de variables dans **Settings → Secrets**.
+Les secrets sont transmis à la configuration sans être importés par
+`app/config.py` et ne sont jamais affichés dans l'interface.
+
+Ne jamais coller une valeur réelle dans `.streamlit/secrets.toml.example`,
+`.env.example` ou un notebook.
 
 ## Workflow quotidien
 

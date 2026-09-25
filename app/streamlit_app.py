@@ -14,10 +14,18 @@ from app.config import AppConfig
 APP_TITLE = "PitStop Assistant"
 
 
+def _streamlit_secrets() -> dict[str, object]:
+    """Return Streamlit secrets as a plain mapping when a secrets file exists."""
+    try:
+        return dict(st.secrets)
+    except (FileNotFoundError, KeyError):
+        return {}
+
+
 def render() -> None:
     """Render the Streamlit application."""
     st.set_page_config(page_title=APP_TITLE, page_icon=":racing_car:")
-    config = AppConfig.from_env()
+    config = AppConfig.from_mapping(_streamlit_secrets())
 
     st.title(APP_TITLE)
     st.caption("Assistant IA multi-agents pour la Formule 1 — saison 2023.")
