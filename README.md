@@ -74,6 +74,7 @@ Ce schéma décrit la cible de `SPEC.md` et `docs/architecture.md`, pas un flux 
 - [`docs/mcp_servers.md`](docs/mcp_servers.md) — contrats MCP prévus.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — workflow de contribution.
 - [`SECURITY.md`](SECURITY.md) — signalement de problèmes de sécurité.
+- [`CHANGELOG.md`](CHANGELOG.md) — historique des versions.
 
 ## Roadmap
 
